@@ -15,21 +15,40 @@ function updateClock() {
   clock.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+function applyTheme(isLight) {
+  document.documentElement.classList.toggle('light-mode', isLight);
+  if (document.body) document.body.classList.toggle('light-mode', isLight);
+}
+
+function isLightTheme() {
+  return document.documentElement.classList.contains('light-mode') || (document.body && document.body.classList.contains('light-mode'));
+}
+
+function syncThemeUI() {
+  const toggle = document.getElementById('theme-toggle');
+  if (!toggle) return;
+  const isLight = isLightTheme();
+  toggle.setAttribute('aria-checked', String(isLight));
+  toggle.title = isLight ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro';
+}
+
 function bindThemeToggle() {
   const toggle = document.getElementById('theme-toggle');
   if (!toggle) return;
 
   toggle.addEventListener('click', () => {
-    const isLight = !document.body.classList.contains('light-mode');
-    document.body.classList.toggle('light-mode', isLight);
+    const isLight = !isLightTheme();
+    applyTheme(isLight);
     localStorage.setItem('greenai-theme', isLight ? 'light' : 'dark');
     updateChartColors(isLight ? '#475569' : '#94A3B8', isLight ? '#CBD5E1' : '#334155');
+    syncThemeUI();
   });
 
   if (localStorage.getItem('greenai-theme') === 'light') {
-    document.body.classList.add('light-mode');
+    applyTheme(true);
     updateChartColors('#475569', '#CBD5E1');
   }
+  syncThemeUI();
 }
 
 function renderUserProfile() {
@@ -127,6 +146,79 @@ function setupLogoutButton() {
     localStorage.removeItem('usuarioLogueado');
     window.location.href = 'login.html';
   });
+}
+
+function getSessionUser() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem('usuarioLogueado'));
+    return parsed && parsed.email ? parsed : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function renderSettingsAccount() {
+  const nameEl = document.getElementById('settings-user-name');
+  const emailEl = document.getElementById('settings-user-email');
+  const roleEl = document.getElementById('settings-user-role');
+  const btn = document.getElementById('settings-account-btn');
+  if (!nameEl || !btn) return;
+
+  const user = getSessionUser();
+  if (user) {
+    nameEl.textContent = user.nombre_completo || user.nombre || 'Operador';
+    if (emailEl) emailEl.textContent = user.email || '';
+    if (roleEl) {
+      roleEl.textContent = (user.rol || 'OPERADOR').toUpperCase();
+      roleEl.className = 'tag cyan';
+    }
+    btn.innerHTML = '<i class="fa-solid fa-right-from-bracket"></i> Cerrar sesión';
+    btn.dataset.action = 'logout';
+  } else {
+    nameEl.textContent = 'Invitado';
+    if (emailEl) emailEl.textContent = 'No has iniciado sesión';
+    if (roleEl) roleEl.textContent = '';
+    btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Iniciar sesión';
+    btn.dataset.action = 'login';
+  }
+}
+
+function setupSettingsModal() {
+  const modal = document.getElementById('settings-modal');
+  if (!modal) return;
+
+  const openBtn = document.getElementById('settings-btn');
+  const closeBtn = document.getElementById('settings-close');
+  const accountBtn = document.getElementById('settings-account-btn');
+  const openSettings = () => {
+    renderSettingsAccount();
+    modal.hidden = false;
+    document.body.classList.add('modal-open');
+  };
+  const closeSettings = () => {
+    modal.hidden = true;
+    document.body.classList.remove('modal-open');
+  };
+
+  if (openBtn) openBtn.addEventListener('click', openSettings);
+  if (closeBtn) closeBtn.addEventListener('click', closeSettings);
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) closeSettings();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !modal.hidden) closeSettings();
+  });
+
+  if (accountBtn) {
+    accountBtn.addEventListener('click', () => {
+      if (accountBtn.dataset.action === 'logout') {
+        localStorage.removeItem('usuarioLogueado');
+        window.location.href = 'login.html';
+      } else {
+        window.location.href = 'login.html';
+      }
+    });
+  }
 }
 
 function bindPublicNavState() {
@@ -498,18 +590,298 @@ async function setupRegisterForm() {
 }
 
 function renderHardwareCards(data) {
-  const container = document.getElementById('hardware-cards');
+  // Esta función ahora estará manejada por el carrusel en initializeCarousel
+}
+
+// ========================================================================
+// LÓGICA DEL CARRUSEL DE SERVIDORES
+// ========================================================================
+let carouselState = {
+  servers: [],
+  blocks: [],
+  currentBlockIndex: 0,
+  blockDuration: 8000, // 8 segundos
+  transitionDuration: 600, // 600ms
+  autoPlayInterval: null,
+  isTransitioning: false,
+  isPaused: false
+};
+
+// ========================================================================
+// ESTADO Y HELPERS DE LA VISTA FÍSICA
+// ========================================================================
+const physicalViewState = {
+  servers: []
+};
+
+function randomInRange(min, max) {
+  return min + Math.random() * (max - min);
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[ch]));
+}
+
+function buildPhysicalServers(hardware, logs) {
+  const logsByHost = {};
+  (Array.isArray(logs) ? logs : []).forEach((log) => {
+    const key = log.hostname || (log.hardware && log.hardware.hostname) || '';
+    if (key && logsByHost[key] === undefined) logsByHost[key] = log;
+  });
+
+  const mocks = generateMockServers(50);
+  const hardwareList = Array.isArray(hardware) ? hardware : [];
+
+  return Array.from({ length: 50 }, (_, index) => {
+    const hw = hardwareList[index] || {};
+    const live = logsByHost[hw.hostname] || {};
+    const mock = mocks[index] || {};
+
+    return {
+      hostname: hw.hostname || mock.hostname || `NODE-${String(index + 1).padStart(2, '0')}`,
+      hardware_id: hw.hardware_id || null,
+      ip_address: hw.ip_address || `10.11.${Math.floor(index / 16)}.${(index % 16) + 10}`,
+      cpu_cores: hw.cpu_cores || mock.cpu_cores || 16,
+      ram_gb: hw.ram_gb || mock.ram_gb || 32,
+      max_watts: hw.max_watts || mock.max_watts || 320,
+      estado: hw.estado || mock.estado || 'ACTIVO',
+      usuario: hw.usuario || null,
+      cpu_utilization: live.cpu_utilization_pct !== undefined ? Number(live.cpu_utilization_pct) : Math.floor(Math.random() * 100),
+      ram_utilization: live.ram_utilization_pct !== undefined ? Number(live.ram_utilization_pct) : Math.floor(Math.random() * 100),
+      temperatura_celsius: live.temperatura_celsius !== undefined ? Number(live.temperatura_celsius) : 35 + Math.random() * 25,
+      energia_watts: live.energia_watts !== undefined ? Number(live.energia_watts) : (hw.max_watts || 320)
+    };
+  });
+}
+
+function bladeTooltipHTML(server, rack) {
+  const online = (server.estado || 'ACTIVO').toUpperCase() !== 'INACTIVO';
+  const estado = online ? 'ACTIVO' : 'INACTIVO';
+  const cpu = Math.round(Number(server.cpu_utilization) || 0);
+  const ram = Math.round(Number(server.ram_utilization) || 0);
+  const watts = Math.round(Number(server.energia_watts) || 0);
+  const temp = Number(server.temperatura_celsius || 0).toFixed(1);
+  const idTxt = server.hardware_id ? escapeHtml(String(server.hardware_id)) : '<span class="tp-empty">—</span>';
+
+  return [
+    '<div class="tp-head">',
+    '  <div class="tp-host-block">',
+    `    <span class="tp-host">${escapeHtml(server.hostname)}</span>`,
+    `    <span class="tp-id">HW-ID ${idTxt}</span>`,
+    '  </div>',
+    `  <span class="tp-status ${online ? 'online' : 'offline'}">${estado}</span>`,
+    '</div>',
+    '<div class="tp-grid">',
+    `  <div class="tp-cell"><span>IP</span><strong class="mono">${escapeHtml(server.ip_address)}</strong></div>`,
+    `  <div class="tp-cell"><span>CPU</span><strong>${cpu}%</strong></div>`,
+    `  <div class="tp-cell"><span>RAM</span><strong>${ram}%</strong></div>`,
+    `  <div class="tp-cell"><span>Consumo</span><strong>${watts} W</strong></div>`,
+    `  <div class="tp-cell"><span>Temp</span><strong>${temp} °C</strong></div>`,
+    `  <div class="tp-cell"><span>Rack</span><strong>${rack || '—'}</strong></div>`,
+    '</div>',
+    server.usuario && server.usuario.nombre_completo
+      ? `<div class="tp-user"><i class="fa-solid fa-user"></i> ${escapeHtml(server.usuario.nombre_completo)}</div>`
+      : ''
+  ].join('');
+}
+
+function initPhysicalRackTooltip() {
+  const rack = document.getElementById('physical-rack');
+  const tip = document.getElementById('blade-tooltip');
+  if (!rack || !tip) return;
+
+  const show = (event) => {
+    const blade = event.target.closest('.blade');
+    if (!blade || blade.dataset.tooltipIdx === undefined) {
+      tip.hidden = true;
+      return;
+    }
+    const server = physicalViewState.servers[Number(blade.dataset.tooltipIdx)];
+    if (!server) {
+      tip.hidden = true;
+      return;
+    }
+    tip.innerHTML = bladeTooltipHTML(server, blade.dataset.rack || '');
+    tip.hidden = false;
+    move(event);
+  };
+
+  const move = (event) => {
+    if (tip.hidden) return;
+    const gap = 16;
+    let x = event.clientX + gap;
+    let y = event.clientY + gap;
+    const rect = tip.getBoundingClientRect();
+    if (x + rect.width > window.innerWidth - 8) x = event.clientX - rect.width - gap;
+    if (y + rect.height > window.innerHeight - 8) y = event.clientY - rect.height - gap;
+    tip.style.left = `${Math.max(8, x)}px`;
+    tip.style.top = `${Math.max(8, y)}px`;
+  };
+
+  const hide = () => {
+    tip.hidden = true;
+  };
+
+  rack.addEventListener('mouseover', show);
+  rack.addEventListener('mousemove', move);
+  rack.addEventListener('mouseleave', hide);
+  rack.addEventListener('touchstart', hide);
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+// Convierte coordenadas del DOM real a coordenadas del viewBox del SVG
+function mapToViewBox(el, svg, point = 'center') {
+  const svgRect = svg.getBoundingClientRect();
+  const elRect = el.getBoundingClientRect();
+  const toX = (px) => ((px - svgRect.left) / (svgRect.width || 1)) * 1000;
+  const toY = (py) => ((py - svgRect.top) / (svgRect.height || 1)) * 760;
+  const cx = elRect.left + elRect.width / 2;
+  if (point === 'top') return { x: toX(cx), y: toY(elRect.top) };
+  if (point === 'bottom') return { x: toX(cx), y: toY(elRect.bottom) };
+  return { x: toX(cx), y: toY(elRect.top + elRect.height / 2) };
+}
+
+// Función para dibujar líneas dinámicas de tráfico alineadas a cada servidor
+function drawTrafficLines() {
+  const svg = document.querySelector('.network-svg');
+  const trafficLinesGroup = document.getElementById('traffic-lines');
+  const switchEl = document.querySelector('.switch-core');
+  const cards = Array.from(document.querySelectorAll('#carousel-servers .server-card'));
+  if (!svg || !trafficLinesGroup || !switchEl) return;
+
+  trafficLinesGroup.innerHTML = '';
+
+  const origin = mapToViewBox(switchEl, svg, 'bottom');
+  const paths = [];
+  const nodes = [];
+  let index = 0;
+
+  for (const card of cards) {
+    const dest = mapToViewBox(card, svg, 'top');
+    const dx = dest.x - origin.x;
+    const dy = dest.y - origin.y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const bend = Math.max(16, Math.min(36, dist * 0.07));
+    const sway = (index % 2 === 0 ? 1 : -1) * Math.min(22, dist * 0.05);
+
+    const ctrl1 = { x: origin.x + dx * 0.38 + sway, y: origin.y + dy * 0.3 };
+    const ctrl2 = { x: dest.x - dx * 0.2 - sway, y: dest.y - dy * 0.16 - bend };
+    const pathData = `M ${origin.x} ${origin.y} C ${ctrl1.x} ${ctrl1.y}, ${ctrl2.x} ${ctrl2.y}, ${dest.x} ${dest.y}`;
+
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', pathData);
+    path.setAttribute('class', index % 2 === 1 ? 'flow-line alt' : 'flow-line');
+    paths.push(path);
+
+    const node = document.createElementNS(SVG_NS, 'circle');
+    node.setAttribute('cx', dest.x);
+    node.setAttribute('cy', dest.y);
+    node.setAttribute('r', '4');
+    node.setAttribute('class', 'flow-node');
+    nodes.push(node);
+
+    index++;
+  }
+
+  const startNode = document.createElementNS(SVG_NS, 'circle');
+  startNode.setAttribute('cx', origin.x);
+  startNode.setAttribute('cy', origin.y);
+  startNode.setAttribute('r', '5');
+  startNode.setAttribute('class', 'flow-node origin');
+
+  paths.forEach((path) => trafficLinesGroup.appendChild(path));
+  trafficLinesGroup.appendChild(startNode);
+  nodes.forEach((node) => trafficLinesGroup.appendChild(node));
+
+  syncCarouselPauseUI();
+}
+
+function generateMockServers(count = 50) {
+  return Array.from({ length: count }, (_, index) => ({
+    hostname: `NODE-${String(index + 1).padStart(2, '0')}`,
+    estado: index % 7 === 0 ? 'INACTIVO' : 'ACTIVO',
+    ip_address: `10.11.${Math.floor(index / 16)}.${(index % 16) + 10}`,
+    cpu_cores: 16 + (index % 4) * 4,
+    ram_gb: 32 + (index % 3) * 16,
+    max_watts: 320 + (index % 5) * 20,
+    cpu_utilization: Math.floor(Math.random() * 100),
+    ram_utilization: Math.floor(Math.random() * 100),
+    temperatura_celsius: 35 + Math.random() * 25,
+    usuario: null
+  }));
+}
+
+function divideServersIntoBlocks(servers, blockSize = 4) {
+  const blocks = [];
+  for (let i = 0; i < servers.length; i += blockSize) {
+    blocks.push(servers.slice(i, i + blockSize));
+  }
+  return blocks;
+}
+
+function renderCarouselBlock(blockIndex, animate = false) {
+  const container = document.getElementById('carousel-servers');
   if (!container) return;
 
-  const items = Array.isArray(data) ? data : [];
-  const cards = items.slice(0, 4).map((host) => {
+  if (carouselState.isTransitioning || blockIndex >= carouselState.blocks.length) return;
+
+  const block = carouselState.blocks[blockIndex];
+  if (!block) return;
+
+  carouselState.isTransitioning = true;
+
+  if (animate) {
+    container.classList.add('fade-out');
+    
+    setTimeout(() => {
+      renderCarouselBlockContent(container, block);
+      container.classList.remove('fade-out');
+      container.classList.add('fade-in');
+      
+      // Dibujar líneas según cantidad de servidores
+      drawTrafficLines(block.length);
+      
+      setTimeout(() => {
+        container.classList.remove('fade-in');
+        carouselState.isTransitioning = false;
+      }, carouselState.transitionDuration);
+    }, carouselState.transitionDuration / 2);
+  } else {
+    renderCarouselBlockContent(container, block);
+    drawTrafficLines(block.length);
+    carouselState.isTransitioning = false;
+  }
+
+  updateProgressDots(blockIndex);
+  updateCarouselStats(blockIndex);
+}
+
+function updateCarouselStats(blockIndex) {
+  const blockEl = document.getElementById('carousel-block');
+  const visibleEl = document.getElementById('carousel-visible');
+  const totalEl = document.getElementById('carousel-total');
+  const block = carouselState.blocks[blockIndex];
+  if (blockEl) blockEl.textContent = `${blockIndex + 1}/${carouselState.blocks.length}`;
+  if (visibleEl) visibleEl.textContent = block ? block.length : 0;
+  if (totalEl) totalEl.textContent = carouselState.servers.length;
+}
+
+function renderCarouselBlockContent(container, block) {
+  container.innerHTML = block.map((host) => {
     const estado = (host.estado || 'ACTIVO').toUpperCase();
     const online = estado !== 'INACTIVO';
 
     return `
       <article class="server-card ${online ? 'online' : 'offline'}">
         <div class="server-header">
-          <div class="server-name">${host.hostname || 'NODE-01'}</div>
+          <div class="server-name">${host.hostname || 'NODE-XX'}</div>
           <span class="server-status ${online ? 'online' : 'offline'}">${estado}</span>
         </div>
 
@@ -533,65 +905,217 @@ function renderHardwareCards(data) {
         </div>
 
         <div class="server-metrics">
-          <div class="metric-box"><span>CPU</span><strong>${host.cpu_cores || 0}%</strong></div>
-          <div class="metric-box"><span>RAM</span><strong>${host.ram_gb || 0}%</strong></div>
+          <div class="metric-box"><span>CPU</span><strong>${host.cpu_utilization || 0}%</strong></div>
+          <div class="metric-box"><span>RAM</span><strong>${host.ram_utilization || 0}%</strong></div>
         </div>
       </article>
     `;
   }).join('');
-
-  container.innerHTML = cards || '<div class="server-card online"><div class="server-name">Sin datos</div></div>';
 }
 
-function renderPhysicalRack(data) {
+function generateProgressDots(totalBlocks) {
+  const container = document.getElementById('progress-dots');
+  if (!container) return;
+
+  container.innerHTML = Array.from({ length: totalBlocks }, (_, index) => `
+    <div class="progress-dot ${index === 0 ? 'active' : ''}" data-block-index="${index}" role="button" aria-label="Bloque ${index + 1}" tabindex="0"></div>
+  `).join('');
+
+  // Agregar event listeners a los puntos
+  container.querySelectorAll('.progress-dot').forEach((dot) => {
+    dot.addEventListener('click', () => {
+      const blockIndex = parseInt(dot.dataset.blockIndex, 10);
+      goToBlock(blockIndex);
+    });
+
+    dot.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        const blockIndex = parseInt(dot.dataset.blockIndex, 10);
+        goToBlock(blockIndex);
+      }
+    });
+  });
+}
+
+function updateProgressDots(blockIndex) {
+  const dots = document.querySelectorAll('.progress-dot');
+  dots.forEach((dot, index) => {
+    if (index === blockIndex) {
+      dot.classList.add('active');
+    } else {
+      dot.classList.remove('active');
+    }
+  });
+  syncCarouselPauseUI();
+}
+
+function goToBlock(blockIndex) {
+  if (blockIndex >= 0 && blockIndex < carouselState.blocks.length && !carouselState.isTransitioning) {
+    carouselState.currentBlockIndex = blockIndex;
+    renderCarouselBlock(blockIndex, true);
+    resetAutoPlay();
+  }
+}
+
+function nextBlock() {
+  if (!carouselState.isTransitioning && !carouselState.isPaused) {
+    const nextIndex = (carouselState.currentBlockIndex + 1) % carouselState.blocks.length;
+    carouselState.currentBlockIndex = nextIndex;
+    renderCarouselBlock(nextIndex, true);
+  }
+}
+
+function syncCarouselPauseUI() {
+  const pauseBtn = document.getElementById('carousel-pause');
+  const dots = document.getElementById('progress-dots');
+  if (pauseBtn) {
+    pauseBtn.innerHTML = carouselState.isPaused
+      ? '<i class="fa-solid fa-play"></i>'
+      : '<i class="fa-solid fa-pause"></i>';
+    pauseBtn.title = carouselState.isPaused ? 'Reanudar' : 'Pausar';
+    pauseBtn.classList.toggle('active', !carouselState.isPaused);
+  }
+  document.querySelectorAll('#traffic-lines').forEach((group) => {
+    group.classList.toggle('paused', carouselState.isPaused);
+  });
+  const activeDot = dots && dots.querySelector('.progress-dot.active');
+  if (activeDot) activeDot.classList.toggle('paused', carouselState.isPaused);
+}
+
+function toggleCarousel() {
+  carouselState.isPaused = !carouselState.isPaused;
+  if (carouselState.isPaused) {
+    clearInterval(carouselState.autoPlayInterval);
+  } else {
+    startAutoPlay();
+  }
+  syncCarouselPauseUI();
+}
+
+function setupCarouselControls() {
+  const pauseBtn = document.getElementById('carousel-pause');
+  const firstBtn = document.getElementById('carousel-first');
+  const prevBtn = document.getElementById('carousel-prev');
+  const nextBtn = document.getElementById('carousel-next');
+  const lastBtn = document.getElementById('carousel-last');
+
+  if (pauseBtn) pauseBtn.addEventListener('click', toggleCarousel);
+  if (firstBtn) firstBtn.addEventListener('click', () => goToBlock(0));
+  if (prevBtn) {
+    prevBtn.addEventListener('click', () => {
+      const total = carouselState.blocks.length || 1;
+      goToBlock((carouselState.currentBlockIndex - 1 + total) % total);
+    });
+  }
+  if (nextBtn) {
+    nextBtn.addEventListener('click', () => {
+      const total = carouselState.blocks.length || 1;
+      goToBlock((carouselState.currentBlockIndex + 1) % total);
+    });
+  }
+  if (lastBtn) lastBtn.addEventListener('click', () => goToBlock((carouselState.blocks.length || 1) - 1));
+  syncCarouselPauseUI();
+}
+
+function startAutoPlay() {
+  // Limpiar intervalo anterior si existe
+  if (carouselState.autoPlayInterval) {
+    clearInterval(carouselState.autoPlayInterval);
+  }
+  
+  // Cronometraje total: duración del bloque + transición
+  const totalDuration = carouselState.blockDuration + carouselState.transitionDuration;
+  
+  carouselState.autoPlayInterval = setInterval(() => {
+    nextBlock();
+  }, totalDuration);
+}
+
+function resetAutoPlay() {
+  clearInterval(carouselState.autoPlayInterval);
+  if (!carouselState.isPaused) {
+    startAutoPlay();
+  }
+}
+
+function initializeCarousel(servers = null) {
+  setupCarouselControls();
+
+  // Usar los servidores proporcionados o generar mocks
+  const allServers = servers && servers.length > 0 
+    ? servers 
+    : generateMockServers(50);
+
+  // Tomar solo los primeros 50 servidores
+  carouselState.servers = allServers.slice(0, 50).map(server => ({
+    ...server,
+    cpu_utilization: server.cpu_utilization !== undefined ? server.cpu_utilization : Math.floor(Math.random() * 100),
+    ram_utilization: server.ram_utilization !== undefined ? server.ram_utilization : Math.floor(Math.random() * 100),
+    temperatura_celsius: server.temperatura_celsius !== undefined ? server.temperatura_celsius : 35 + Math.random() * 25
+  }));
+
+  // Dividir en bloques de 4
+  carouselState.blocks = divideServersIntoBlocks(carouselState.servers, 4);
+
+  // Generar puntos de progreso
+  generateProgressDots(carouselState.blocks.length);
+
+  // Renderizar el primer bloque
+  renderCarouselBlock(0, false);
+
+  // Iniciar autoplay
+  startAutoPlay();
+}
+
+
+function renderPhysicalRack(data, logs = []) {
   const container = document.getElementById('physical-rack');
   if (!container) return;
 
-  const servers = Array.isArray(data) && data.length ? data : Array.from({ length: 50 }, (_, index) => ({
-    hostname: `NODE-${String(index + 1).padStart(2, '0')}`,
-    estado: index % 6 === 0 ? 'INACTIVO' : 'ACTIVO',
-    ip_address: `10.11.${Math.floor(index / 16)}.${(index % 16) + 10}`,
-    cpu_cores: 16,
-    ram_gb: 32,
-    max_watts: 320 + (index % 5) * 20
-  }));
+  const servers = buildPhysicalServers(data, logs);
+  physicalViewState.servers = servers;
 
-  const safeServers = Array.from({ length: 50 }, (_, index) => {
-    const server = servers[index] || {};
-    return {
-      hostname: server.hostname || `NODE-${String(index + 1).padStart(2, '0')}`,
-      estado: server.estado || 'ACTIVO',
-      ip_address: server.ip_address || `10.11.${Math.floor(index / 16)}.${(index % 16) + 10}`,
-      cpu_cores: server.cpu_cores || 16,
-      ram_gb: server.ram_gb || 32,
-      max_watts: server.max_watts || 320,
-      usuario: server.usuario || null
-    };
-  });
+  const totalEl = document.getElementById('physical-rack-total');
+  if (totalEl) totalEl.textContent = String(servers.length);
 
-  const cabinets = Array.from({ length: 5 }, (_, cabinetIndex) => {
-    const start = cabinetIndex * 10;
-    const slice = safeServers.slice(start, start + 10);
-    const slots = slice.map((server) => {
+  const rackLetters = ['A', 'B', 'C', 'D', 'E'];
+  const slotsPerRack = 10;
+
+  const cabinets = rackLetters.map((letter, rackIndex) => {
+    const slice = servers.slice(rackIndex * slotsPerRack, (rackIndex + 1) * slotsPerRack);
+    const onlineCount = slice.filter((s) => (s.estado || 'ACTIVO').toUpperCase() !== 'INACTIVO').length;
+
+    const blades = slice.map((server, slotIndex) => {
+      const globalIndex = rackIndex * slotsPerRack + slotIndex;
       const online = (server.estado || 'ACTIVO').toUpperCase() !== 'INACTIVO';
-      const tooltip = `${server.hostname}\nIP: ${server.ip_address}\nCPU: ${server.cpu_cores} cores\nRAM: ${server.ram_gb} GB\nPower: ${server.max_watts} W`;
+      const healthDur = randomInRange(0.42, 0.62).toFixed(2);
+      const healthDelay = randomInRange(0, 0.9).toFixed(2);
+      const trafficDur = randomInRange(0.55, 0.95).toFixed(2);
+      const trafficDelay = randomInRange(0.05, 1.2).toFixed(2);
+
       return `
-        <div class="rack-slot ${online ? 'online' : 'offline'}" title="${tooltip}">
-          <span class="rack-led"></span>
-          <small>${server.hostname}</small>
+        <div class="blade ${online ? 'online' : 'offline'}" data-tooltip-idx="${globalIndex}" data-rack="${letter}" aria-label="${escapeHtml(server.hostname)} ${online ? 'activo' : 'inactivo'}">
+          <span class="blade-leds">
+            <span class="blade-led led-health" style="--led-dur:${healthDur}s;--led-delay:${healthDelay}s"></span>
+            ${online ? `<span class="blade-led led-traffic" style="--led-dur:${trafficDur}s;--led-delay:${trafficDelay}s"></span>` : ''}
+          </span>
+          <span class="blade-label">${escapeHtml(server.hostname)}</span>
         </div>
       `;
-    }).join('');
+    });
 
     return `
-      <div class="rack-cabinet">
-        <div class="cabinet-header">CAB-${cabinetIndex + 1}</div>
-        <div class="cabinet-slots">${slots}</div>
-      </div>
+      <article class="rack-cabinet rack-${letter}">
+        <header class="cabinet-header">
+          <span class="cabinet-name"><i class="fa-solid fa-server"></i> RACK ${letter}</span>
+          <span class="cabinet-count"><b>${onlineCount}</b>/10</span>
+        </header>
+        <div class="cabinet-slots">${blades.join('')}</div>
+      </article>
     `;
-  }).join('');
+  });
 
-  container.innerHTML = cabinets;
+  container.innerHTML = cabinets.join('');
 }
 
 function toggleNetworkView(mode) {
@@ -604,6 +1128,12 @@ function toggleNetworkView(mode) {
   const showLogical = mode === 'logical';
   logicalPanel.classList.toggle('active', showLogical);
   physicalPanel.classList.toggle('active', !showLogical);
+
+  const carouselToolbar = document.querySelector('.carousel-toolbar');
+  if (carouselToolbar) carouselToolbar.hidden = !showLogical;
+
+  const bladeTooltip = document.getElementById('blade-tooltip');
+  if (bladeTooltip) bladeTooltip.hidden = true;
 
   buttons.forEach((button) => {
     const isActive = button.dataset.viewToggle === mode;
@@ -624,30 +1154,71 @@ async function loadNetworkData() {
     const logs = logsRes.ok ? await logsRes.json() : [];
     const kpis = kpisRes.ok ? await kpisRes.json() : {};
 
-    renderHardwareCards(hardware);
-    renderPhysicalRack(hardware);
+    // Inicializar el carrusel con los datos de hardware
+    initializeCarousel(hardware);
 
+    // Renderizar la vista física
+    renderPhysicalRack(hardware, logs);
+
+    // Actualizar estadísticas
     const nodeCountEl = document.getElementById('network-nodes');
     const trafficEl = document.getElementById('network-traffic');
     const latencyEl = document.getElementById('network-latency');
 
-    if (nodeCountEl) nodeCountEl.textContent = `${kpis.nodosActivos ?? hardware.length ?? 0}`;
+    if (nodeCountEl) nodeCountEl.textContent = `${kpis.nodosActivos ?? hardware.length ?? 0}/50`;
     if (trafficEl) trafficEl.textContent = `${kpis.totalWatts ?? 0} W`;
     if (latencyEl) latencyEl.textContent = `${Math.max(6, Math.min(120, Number(kpis.cpuAvg ?? 34) * 2))} ms`;
 
+    // Cargar eventos mejorados
     const feed = document.getElementById('network-log-feed');
     if (feed) {
-      feed.innerHTML = (logs || []).slice(0, 6).map((log) => `
-        <li>
-          <strong>${log.hostname || 'NODE'}</strong>
-          <span>${log.temperatura_celsius ?? 0}°C</span>
-        </li>
-      `).join('');
+      const eventHtml = (logs || []).slice(0, 8).map((log) => {
+        const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '--:--:--';
+        const hora = new Date(log.timestamp).toLocaleDateString('es-ES');
+        
+        // Determinar nivel de severidad
+        const temp = log.temperatura_celsius || 0;
+        const cpu = log.cpu_utilization_pct || 0;
+        let estado = 'normal';
+        let statusClass = 'event-status';
+        let icon = '✓';
+        
+        if (temp > 60 || cpu > 85) {
+          estado = 'CRÍTICO';
+          statusClass += ' critical';
+          icon = '⚠';
+        } else if (temp > 55 || cpu > 70) {
+          estado = 'ALERTA';
+          statusClass += ' warning';
+          icon = '!';
+        } else {
+          estado = 'NORMAL';
+        }
+
+        return `
+          <li>
+            <strong>${icon} ${log.hostname || 'NODE-XX'}</strong>
+            <div class="event-meta">
+              <span><i class="fa-solid fa-thermometer-half"></i> ${Math.round(temp)}°C</span>
+              <span><i class="fa-solid fa-microchip"></i> CPU ${cpu}%</span>
+              <span><i class="fa-solid fa-memory"></i> RAM ${log.ram_utilization_pct || 0}%</span>
+              <span><i class="fa-solid fa-bolt"></i> ${log.energia_watts || 0}W</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+              <span style="font-size: 0.7rem; color: var(--text-muted);">${hora} • ${timestamp}</span>
+              <span class="${statusClass}">${estado}</span>
+            </div>
+          </li>
+        `;
+      }).join('');
+      
+      feed.innerHTML = eventHtml || '<li style="color: var(--text-muted);">No hay eventos registrados</li>';
     }
   } catch (error) {
     console.error('Error cargando red:', error);
   }
 }
+
 
 function initializeDashboard() {
   checkAuthSession();
@@ -668,13 +1239,29 @@ function initializeDashboard() {
 function initializeNetworkPage() {
   checkAuthSession();
   renderUserProfile();
+  
+  // Cargar datos iniciales de la red
   loadNetworkData();
+
+  // Inicializar el tooltip de la vista física
+  initPhysicalRackTooltip();
+  
+  // Configurar los botones de toggle de vista
   const viewButtons = document.querySelectorAll('[data-view-toggle]');
   viewButtons.forEach((button) => {
     button.addEventListener('click', () => toggleNetworkView(button.dataset.viewToggle));
   });
+  
+  // Establecer la vista lógica por defecto
   toggleNetworkView('logical');
-  setInterval(loadNetworkData, 10000);
+
+  // Recalcular las líneas de tráfico cuando terminen de cargar las fuentes
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => drawTrafficLines());
+  }
+  
+  // Recargar datos cada 30 segundos para actualizar eventos
+  setInterval(loadNetworkData, 30000);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -687,12 +1274,22 @@ document.addEventListener('DOMContentLoaded', () => {
   setupLoginForm();
   setupRegisterForm();
   bindPublicNavState();
+  setupSettingsModal();
+
+  // Recalcular líneas de tráfico al redimensionar la ventana
+  let trafficResizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(trafficResizeTimer);
+    trafficResizeTimer = setTimeout(() => {
+      if (document.getElementById('traffic-lines')) drawTrafficLines();
+    }, 150);
+  });
 
   if (document.getElementById('wattsChart') || document.getElementById('resourcesChart') || document.getElementById('monthlyEnergyChart')) {
     initializeDashboard();
   }
 
-  if (document.getElementById('hardware-cards') || document.getElementById('physical-rack')) {
+  if (document.getElementById('carousel-servers') || document.getElementById('physical-rack')) {
     initializeNetworkPage();
   }
 });

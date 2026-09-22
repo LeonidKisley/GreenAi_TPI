@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>try{if(localStorage.getItem('greenai-theme')==='light'){document.documentElement.classList.add('light-mode');}}catch(e){}</script>
 </head>
 <body class="dashboard-page page-shell">
   <header class="topbar glass-panel">
@@ -23,6 +24,7 @@
       <span class="cluster-pill"><i class="fa-solid fa-circle-dot fa-beat-fade"></i> Cluster online</span>
       <span class="user-pill"><i class="fa-solid fa-user"></i> <span id="user-name-display">Usuario</span></span>
       <span id="live-clock" class="clock mono">--:--:--</span>
+      <button id="settings-btn" class="icon-btn settings-btn" type="button" aria-label="Configuración" title="Configuración"><i class="fa-solid fa-gear"></i></button>
       <button id="logout-btn" class="btn btn-secondary" type="button"><i class="fa-solid fa-right-from-bracket"></i> Cerrar sesión</button>
     </div>
   </header>
@@ -35,7 +37,7 @@
           <span class="kpi-badge success"><i class="fa-solid fa-circle"></i> En línea</span>
         </div>
         <span class="kpi-label">Nodos activos</span>
-        <div class="kpi-value"><strong id="kpi-nodes">--</strong><span>/ 12</span></div>
+        <div class="kpi-value"><strong id="kpi-nodes">--</strong><span>/ 50</span></div>
       </article>
 
       <article class="kpi-card glass-panel">
@@ -149,6 +151,46 @@
       </div>
     </section>
   </main>
+
+  <div id="settings-modal" class="modal-overlay" hidden>
+    <div class="settings-modal glass-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="settings-head">
+        <div class="settings-title"><i class="fa-solid fa-gear"></i> <span id="settings-title">Configuración</span></div>
+        <button id="settings-close" class="settings-close" type="button" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="settings-body">
+        <section class="settings-section">
+          <h3>Apariencia</h3>
+          <div class="theme-row">
+            <div class="theme-info">
+              <i class="fa-solid fa-circle-half-stroke"></i>
+              <div>
+                <strong>Modo de interfaz</strong>
+                <span>Alterna entre claro y oscuro</span>
+              </div>
+            </div>
+            <button id="theme-toggle" class="theme-switch" type="button" role="switch" aria-checked="false" aria-label="Cambiar tema">
+              <span class="theme-track"><i class="fa-solid fa-sun"></i><span class="theme-thumb"></span><i class="fa-solid fa-moon"></i></span>
+            </button>
+          </div>
+        </section>
+        <section class="settings-section">
+          <h3>Cuenta</h3>
+          <div class="account-card">
+            <div class="account-avatar"><i class="fa-solid fa-user"></i></div>
+            <div class="account-info">
+              <strong id="settings-user-name">Invitado</strong>
+              <span id="settings-user-email">No has iniciado sesión</span>
+              <span id="settings-user-role" class="tag cyan"></span>
+            </div>
+          </div>
+          <button id="settings-account-btn" class="btn btn-secondary action-btn" type="button">
+            <i class="fa-solid fa-right-to-bracket"></i> Iniciar sesión
+          </button>
+        </section>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
