@@ -39,53 +39,67 @@
   --hero-bg: linear-gradient(160deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.72));
 }
 
-/* Paleta Modo Claro */
+/* Paleta Modo Claro (enfocada en verde menta #C5FCEA) */
 html.light-mode {
-  --bg-primary: #F1F5F9;
-  --bg-secondary: #FFFFFF;
-  --bg-panel: rgba(255, 255, 255, 0.82);
-  --bg-panel-strong: rgba(255, 255, 255, 0.97);
+  /* Paleta "Clean Muted Tech" */
+  --background: #C5FCEA;
+  --surface: #EAF7F1;
+  --surface-secondary: #C5EAD9;
+  --border: #9FD8BC;
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --green: #059669;
+  --cyan: #0284C7;
+  --purple: #7C3AED;
+  --success-bg: #D1FAE5;
+  --cyan-bg: #E0F2FE;
+  --purple-bg: #EDE9FE;
 
-  --border-soft: rgba(100, 116, 139, 0.22);
-  --border-cyan: rgba(8, 145, 178, 0.4);
-  --border-green: rgba(5, 150, 105, 0.4);
+  /* Mapeo a variables existentes del tema */
+  --bg-primary: var(--background);
+  --bg-secondary: #F0FBF5;
+  --bg-panel: rgba(234, 247, 241, 0.82);
+  --bg-panel-strong: rgba(234, 247, 241, 0.97);
 
-  --neon-purple: #7C3AED;
+  --border-soft: var(--border);
+  --border-cyan: rgba(2, 132, 199, 0.35);
+  --border-green: rgba(5, 150, 105, 0.45);
+
+  --neon-purple: var(--purple);
   --neon-purple-strong: #6D28D9;
-  --neon-cyan: #0891B2;
+  --neon-cyan: var(--cyan);
   --neon-cyan-strong: #06B6D4;
-  --neon-green: #059669;
+  --neon-green: var(--green);
   --neon-amber: #B45309;
   --neon-red: #DC2626;
 
-  --text-main: #1E293B;
-  --text-strong: #0F172A;
-  --text-muted: #64748B;
+  --text-main: var(--text-primary);
+  --text-strong: var(--text-primary);
+  --text-muted: var(--text-secondary);
 
-  --shadow-purple: rgba(100, 116, 139, 0.2);
-  --shadow-cyan: rgba(8, 145, 178, 0.28);
-  --shadow-green: rgba(5, 150, 105, 0.26);
+  --shadow-purple: rgba(124, 58, 237, 0.18);
+  --shadow-cyan: rgba(2, 132, 199, 0.25);
+  --shadow-green: rgba(5, 150, 105, 0.3);
   --shadow-amber: rgba(180, 83, 9, 0.28);
 
-  --surface: #FFFFFF;
-  --surface-strong: #FFFFFF;
-  --surface-soft: rgba(241, 245, 249, 0.9);
+  --surface-strong: #F7FBF9;
+  --surface-soft: var(--surface-secondary);
   --input-bg: #FFFFFF;
-  --chart-bg: linear-gradient(180deg, rgba(241, 245, 249, 0.6), rgba(255, 255, 255, 0.5));
-  --network-bg: linear-gradient(180deg, rgba(241, 245, 249, 0.92), rgba(255, 255, 255, 0.96));
-  --hero-bg: linear-gradient(160deg, #FFFFFF, rgba(241, 245, 249, 0.9));
+  --chart-bg: linear-gradient(180deg, rgba(197, 234, 217, 0.7), rgba(234, 247, 241, 0.55));
+  --network-bg: linear-gradient(180deg, rgba(197, 234, 217, 0.9), rgba(234, 247, 241, 0.96));
+  --hero-bg: linear-gradient(160deg, #EAF7F1, rgba(197, 252, 234, 0.85));
 }
 
 html.light-mode body::before {
   background-image:
-    linear-gradient(rgba(100, 116, 139, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(100, 116, 139, 0.05) 1px, transparent 1px);
+    linear-gradient(rgba(5, 150, 105, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(5, 150, 105, 0.07) 1px, transparent 1px);
 }
 
 html.light-mode body::after {
   background: radial-gradient(circle at 20% 20%, rgba(124, 58, 237, 0.06), transparent 30%),
-    radial-gradient(circle at 80% 0%, rgba(8, 145, 178, 0.07), transparent 30%),
-    radial-gradient(circle at 50% 100%, rgba(5, 150, 105, 0.06), transparent 25%);
+    radial-gradient(circle at 80% 0%, rgba(197, 252, 234, 0.5), transparent 30%),
+    radial-gradient(circle at 50% 100%, rgba(5, 150, 105, 0.14), transparent 25%);
 }
 
 /* ==================================================================
@@ -2205,6 +2219,22 @@ html.light-mode .blade-tooltip {
 html.light-mode .blade-tooltip .tp-cell {
   background: rgba(241, 245, 249, 0.8);
   border-color: rgba(100, 116, 139, 0.14);
+}
+
+/* Tarjeta de login en modo claro */
+html.light-mode .auth-panel {
+  border: 1.5px solid #34D399;
+  box-shadow: 0 10px 30px rgba(52, 211, 153, 0.25);
+}
+
+html.light-mode .auth-panel::before {
+  background: linear-gradient(90deg, rgba(52, 211, 153, 0.55), rgba(16, 185, 129, 0.45), rgba(167, 243, 208, 0.65), rgba(52, 211, 153, 0.55));
+}
+
+html.light-mode .input-group input,
+html.light-mode .input-group select {
+  border: 1.5px solid #A7F3D0;
+  background: #F8FAFC;
 }
 
 @media (max-width: 980px) {

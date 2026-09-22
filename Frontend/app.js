@@ -9,6 +9,56 @@ const API_URL = (() => {
   return `${origin}/api`;
 })();
 
+// Cliente puro: las métricas se consumen directamente del green-ai-gateway (puerto 8081)
+const MONITORING_URL = 'http://localhost:8081/api/monitoring/v1/metrics';
+
+// ==================================================================
+// ADAPTADORES DEL CONTRATO DEL GATEWAY (/api/monitoring/v1/metrics)
+// ==================================================================
+function normalizeNode(node) {
+  return {
+    hostname: node.hostname || node.nodeId || 'NODE-XX',
+    hardware_id: node.nodeId || null,
+    ip_address: node.ipAddress || '10.0.0.1',
+    cpu_cores: node.cpuCores || 0,
+    ram_gb: node.ramGb || 0,
+    max_watts: node.maxWatts || 0,
+    estado: node.estado || 'ACTIVO',
+    usuario: node.usuario ? { nombre_completo: node.usuario.nombreCompleto } : null
+  };
+}
+
+function normalizeSnapshot(snapshot) {
+  return {
+    hostname: snapshot.hostname || snapshot.nodeId || 'NODE-XX',
+    timestamp: snapshot.timestamp || null,
+    cpu_utilization_pct: snapshot.cpuUtilizationPct ?? 0,
+    ram_utilization_pct: snapshot.ramUtilizationPct ?? 0,
+    temperatura_celsius: snapshot.temperaturaCelsius ?? 0,
+    energia_watts: snapshot.energiaWatts ?? 0,
+    estado: snapshot.estado || 'ACTIVO'
+  };
+}
+
+async function fetchMonitoring(path) {
+  const res = await fetch(`${MONITORING_URL}/${path}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status} en ${path}`);
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+function computeKPIs(current) {
+  const list = Array.isArray(current) ? current : [];
+  const active = list.filter((s) => (s.estado || 'ACTIVO').toUpperCase() !== 'INACTIVO');
+  const avg = (key) => (list.length ? Math.round(list.reduce((acc, s) => acc + Number(s[key] || 0), 0) / list.length) : 0);
+  return {
+    nodosActivos: active.length || list.length,
+    totalWatts: avg('energia_watts'),
+    cpuAvg: avg('cpu_utilization_pct'),
+    ramAvg: avg('ram_utilization_pct')
+  };
+}
+
 function updateClock() {
   const clock = document.getElementById('live-clock');
   if (!clock) return;
@@ -365,19 +415,17 @@ function updateChartColors(textColor, gridColor) {
 
 async function loadKPIs() {
   try {
-    const res = await fetch(`${API_URL}/kpis`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const kpis = computeKPIs((await fetchMonitoring('current')).map(normalizeSnapshot));
 
     const nodesEl = document.getElementById('kpi-nodes');
     const wattsEl = document.getElementById('kpi-watts');
     const cpuEl = document.getElementById('kpi-cpu');
     const ramEl = document.getElementById('kpi-ram');
 
-    if (nodesEl) nodesEl.textContent = String(data.nodosActivos ?? '--');
-    if (wattsEl) wattsEl.textContent = `${data.totalWatts ?? 0} W`;
-    if (cpuEl) cpuEl.textContent = `${data.cpuAvg ?? 0} %`;
-    if (ramEl) ramEl.textContent = `${data.ramAvg ?? 0} %`;
+    if (nodesEl) nodesEl.textContent = String(kpis.nodosActivos ?? '--');
+    if (wattsEl) wattsEl.textContent = `${kpis.totalWatts} W`;
+    if (cpuEl) cpuEl.textContent = `${kpis.cpuAvg} %`;
+    if (ramEl) ramEl.textContent = `${kpis.ramAvg} %`;
 
     const nodesCard = document.querySelector('.kpi-card .kpi-value strong#kpi-nodes')?.closest('.kpi-card');
     if (nodesCard && !nodesCard.dataset.bound) {
@@ -420,11 +468,9 @@ async function loadHardwareTable() {
     const tbody = document.getElementById('hardware-table-body');
     if (!tbody) return;
 
-    const res = await fetch(`${API_URL}/hardware`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const catalog = (await fetchMonitoring('catalog')).map(normalizeNode);
 
-    tbody.innerHTML = (data || []).map((h) => `
+    tbody.innerHTML = catalog.map((h) => `
       <tr>
         <td>${h.hostname || 'N/A'}</td>
         <td class="mono">${h.ip_address || '0.0.0.0'}</td>
@@ -444,13 +490,13 @@ async function loadMonthlyEnergy() {
   if (!monthlyEnergyChart) return;
 
   try {
-    const res = await fetch(`${API_URL}/logs`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const history = (await fetchMonitoring('history')).map(normalizeSnapshot);
+    const ordered = [...history].reverse();
+    const defaults = [330, 420, 390, 480, 460, 510];
 
     const points = Array.from({ length: 6 }, (_, idx) => {
-      const item = (data || [])[idx] || {};
-      return Number(item.energia_watts || [330, 420, 390, 480, 460, 510][idx] || 0);
+      const item = ordered[idx] || {};
+      return Number(item.energia_watts || defaults[idx] || 0);
     });
 
     monthlyEnergyChart.data.datasets[0].data = points;
@@ -462,9 +508,8 @@ async function loadMonthlyEnergy() {
 
 async function loadLogsAndCharts() {
   try {
-    const res = await fetch(`${API_URL}/logs`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const history = (await fetchMonitoring('history')).map(normalizeSnapshot);
+    const data = history;
 
     const tbody = document.getElementById('logs-table-body');
     if (tbody) {
@@ -514,15 +559,25 @@ function setMessage(elementId, message, isError = false) {
 async function setupLoginForm() {
   const form = document.getElementById('login-form');
   if (!form) return;
+  const submitBtn = form.querySelector('button[type="submit"]');
+  let isSubmitting = false;
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (isSubmitting) return;
     const email = document.getElementById('email')?.value.trim();
     const password = document.getElementById('password')?.value;
 
     if (!email || !password) {
       setMessage('message', 'Completa correo y contraseña.', true);
       return;
+    }
+
+    isSubmitting = true;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.dataset.original = submitBtn.innerHTML;
+      submitBtn.innerHTML = 'Ingresando...';
     }
 
     try {
@@ -541,6 +596,13 @@ async function setupLoginForm() {
       setTimeout(() => { window.location.href = 'dashboard.html'; }, 1200);
     } catch (error) {
       setMessage('message', error.message || 'Error de conexión.', true);
+    } finally {
+      isSubmitting = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = submitBtn.dataset.original || submitBtn.innerHTML;
+        delete submitBtn.dataset.original;
+      }
     }
   });
 }
@@ -1144,15 +1206,15 @@ function toggleNetworkView(mode) {
 
 async function loadNetworkData() {
   try {
-    const [hardwareRes, logsRes, kpisRes] = await Promise.all([
-      fetch(`${API_URL}/hardware`),
-      fetch(`${API_URL}/logs`),
-      fetch(`${API_URL}/kpis`)
+    const [catalog, history, current] = await Promise.all([
+      fetchMonitoring('catalog'),
+      fetchMonitoring('history'),
+      fetchMonitoring('current')
     ]);
 
-    const hardware = hardwareRes.ok ? await hardwareRes.json() : [];
-    const logs = logsRes.ok ? await logsRes.json() : [];
-    const kpis = kpisRes.ok ? await kpisRes.json() : {};
+    const hardware = catalog.map(normalizeNode);
+    const logs = history.map(normalizeSnapshot);
+    const kpis = computeKPIs(current.map(normalizeSnapshot));
 
     // Inicializar el carrusel con los datos de hardware
     initializeCarousel(hardware);
